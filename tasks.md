@@ -30,4 +30,25 @@ i can use some hard truth metrics as well since im not using datasets with groun
 
 ## TASK 3 - Read up/find sme good code translation/APR papers
 
-## Build a pipeline in Agno --> get keys from Tibo
+## TASK 4 - Build a pipeline in Agno --> get keys from Tibo
+
+## TASK 5 - Start writing my paper
+
+I will complete Chapter 1 this week (2026-01-09 - 2026-01-15)
+
+* **Chapter 1 - Introduction**
+    * Background
+    * Problem Formulation
+    * Motivation
+    * Objectives
+    * Contributions of the work
+    * Scope and limitations
+    * Thesis structure
+
+Collecting some papers this week will set me up well to do Chapter 2 next week:
+
+* **Chapter 2 - Related work**
+    * Review of existing research
+    * Comparison of approaches
+    * identified gaps and positioning of this work
+    * summary
