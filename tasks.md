@@ -4,7 +4,7 @@
 
 * https://github.com/krausest/js-framework-benchmark/tree/master/frameworks/keyed/vanillajs
 
-* https://github.com/realworld-apps/realworld
+* https://github.com/mits-gossau/event-driven-web-components-realworld-example-app
 
 ## TASK 2 - Find some good evaluator metrics
 

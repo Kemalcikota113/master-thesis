@@ -1,0 +1,169 @@
+// @ts-check
+
+/* global fetch */
+/* global HTMLElement */
+/* global location */
+/* global self */
+/* global AbortController */
+/* global CustomEvent */
+
+/**
+ * https://github.com/gothinkster/realworld/tree/master/api#favorite-article
+ *
+ * @typedef {{ article?: import("../../helpers/Interfaces.js").SingleArticle, profile?: import("../../helpers/Interfaces.js").Profile}} SetFavoriteEventDetail
+ */
+
+import { Environment } from '../../helpers/Environment.js'
+
+/**
+ * https://github.com/gothinkster/realworld/tree/master/api#favorite-article
+ * As a controller, this component becomes a store and organizes events
+ * dispatches: 'article' on 'setFavorite'
+ * dispatches: 'article' or 'profile' on 'followUser'
+ *
+ * @export
+ * @class Favorite
+ */
+export default class Favorite extends HTMLElement {
+  constructor () {
+    super()
+    this.isAuthenticated = false
+    this.abortController = null
+    /**
+     * Listens to the event name/typeArg: 'user'
+     *
+     * @param {CustomEvent & {detail: import("./User.js").UserEventDetail}} event
+     */
+    this.userListener = event => {
+      event.detail.fetch.then(user => {
+        this.isAuthenticated = !!user
+      }).catch(error => {
+        this.isAuthenticated = false
+        console.log(`Error@UserFetch: ${error}`)
+      })
+    }
+
+    /**
+     * Listens to the event name/typeArg: 'setFavorite'
+     *
+     * @param {CustomEvent & {detail: SetFavoriteEventDetail}} event
+     * @return {Promise<import("../../helpers/Interfaces.js").SingleArticle | Error> | false}
+     */
+    this.setFavoriteListener = event => {
+      if (!this.isAuthenticated) self.location.href = '#/register'
+
+      if (!event.detail.article || !this.isAuthenticated) return false
+
+      if (this.abortController) this.abortController.abort()
+      this.abortController = new AbortController()
+
+      const url = `${Environment.fetchBaseUrl}articles/${event.detail.article.slug}/favorite`
+
+      return fetch(url, {
+        method: event.detail.article.favorited ? 'DELETE' : 'POST',
+        ...Environment.fetchHeaders,
+        signal: this.abortController.signal
+      }).then(response => {
+        if (response.status >= 200 && response.status <= 299) return response.json()
+        throw new Error(response.statusText)
+      }).then(
+        /**
+         * Answer the CustomEvent setFavorite
+         *
+         * @param {import("../../helpers/Interfaces.js").SingleArticle} article
+         * @return {void | false}
+         */
+        article => {
+          this.dispatchEvent(new CustomEvent('article', {
+            /** @type {GetArticleEventDetail} */
+            detail: {
+              slug: article.slug,
+              fetch: Promise.resolve(article)
+            },
+            bubbles: true,
+            cancelable: true,
+            composed: true
+          }))
+        }
+      // forward to login, if error means that the user is unauthorized
+      // @ts-ignore
+      ).catch(error => error.message === 'Unauthorized' ? (location.hash = console.warn(url, 'Unauthorized User:', error) || '#/login') : console.warn(url, error) || error)
+    }
+
+    /**
+     * Listens to the event name/typeArg: 'setFavorite'
+     *
+     * @param {CustomEvent & {detail: SetFavoriteEventDetail}} event
+     * @return {Promise<import("../../helpers/Interfaces.js").SingleArticle | Error> | any}
+     */
+    this.followUserListener = event => {
+      if (!this.isAuthenticated) return (self.location.href = '#/register')
+
+      if (!event.detail.article && !event.detail.profile.username) return false
+
+      if (this.abortController) this.abortController.abort()
+      this.abortController = new AbortController()
+
+      const url = `${Environment.fetchBaseUrl}profiles/${(event.detail.article && event.detail.article.author.username) || event.detail.profile.username}/follow`
+
+      return fetch(url, {
+        method: event.detail.article && event.detail.article.author.following ? 'DELETE' : event.detail.profile && event.detail.profile.following ? 'DELETE' : 'POST',
+        ...Environment.fetchHeaders,
+        signal: this.abortController.signal
+      }).then(response => {
+        if (response.status >= 200 && response.status <= 299) return response.json()
+        throw new Error(response.statusText)
+      }).then(
+        /**
+         * Answer the CustomEvent setFavorite
+         *
+         * @param {import("../../helpers/Interfaces.js").Profile} profile
+         * @return {void | false}
+         */
+        ({ profile }) => {
+          if (event.detail.article) {
+            const article = Object.assign(event.detail.article, { author: profile })
+            this.dispatchEvent(new CustomEvent('article', {
+              detail: {
+                slug: article.slug,
+                fetch: Promise.resolve({ article })
+              },
+              bubbles: true,
+              cancelable: true,
+              composed: true
+            }))
+          } else {
+            this.dispatchEvent(new CustomEvent('profile', {
+              detail: {
+                fetch: Promise.resolve({ profile })
+              },
+              bubbles: true,
+              cancelable: true,
+              composed: true
+            }))
+          }
+        }
+      // forward to login, if error means that the user is unauthorized
+      // @ts-ignore
+      ).catch(error => error.message === 'Unauthorized' ? (location.hash = console.warn(url, 'Unauthorized User:', error) || '#/login') : console.warn(url, error) || error)
+    }
+  }
+
+  connectedCallback () {
+    document.body.addEventListener('user', this.userListener)
+    this.addEventListener('setFavorite', this.setFavoriteListener)
+    this.addEventListener('followUser', this.followUserListener)
+
+    this.dispatchEvent(new CustomEvent('getUser', {
+      bubbles: true,
+      cancelable: true,
+      composed: true
+    }))
+  }
+
+  disconnectedCallback () {
+    document.body.removeEventListener('user', this.userListener)
+    this.removeEventListener('setFavorite', this.setFavoriteListener)
+    this.removeEventListener('followUser', this.followUserListener)
+  }
+}

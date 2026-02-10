@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html compute=lang lang=en dir=ltr>
+<head>
+  <meta charset="utf-8">
+  <title>Conduit Tests</title>
+  <!-- Import Ionicon icons & Google Fonts our Bootstrap theme relies on -->
+  <link href="//code.ionicframework.com/ionicons/2.0.1/css/ionicons.min.css" rel="stylesheet" type="text/css">
+  <link href="//fonts.googleapis.com/css?family=Titillium+Web:700|Source+Serif+Pro:400,700|Merriweather+Sans:400,700|Source+Sans+Pro:400,300,600,700,300italic,400italic,600italic,700italic" rel="stylesheet" type="text/css">
+  <!-- Import the custom Bootstrap 4 theme from our hosted CDN -->
+  <link rel="stylesheet" href="//demo.productionready.io/main.css">
+  <style>
+    /**
+     * specific initial style
+     */
+    html, body {
+      /** sticky footer **/
+      background-color: black;
+      color: white;
+      height: 100%;
+      font-size: 14px;
+    }
+    h2, #summary {
+      padding: 5px;
+    }
+    #summary a {
+      color: white;
+      text-decoration: none;
+    }
+    #summary a > span {
+      font-weight: bolder;
+    }
+    #summary > div {
+      border: 0;
+    }
+    #results > div {
+      display: flex;
+      margin: 0;
+      padding: 0;
+    }
+    #results > div > * {
+      flex: 50%;
+    }
+    #results > div > *:first-child{
+      border-right: 1px dotted black;
+    }
+    .test > *:not([hidden]) {
+      display: block;
+    }
+    .passed, .failed, .placeHolder {
+      border-bottom: 2px dotted white;
+      color: white;
+      padding: 5px;
+    }
+    .passed {
+      background-color: green;
+    }
+    .failed {
+      background-color: red;
+    }
+    .placeHolder {
+      background-color: gray;
+    }
+    .result > div, .test > div, h1, h2 {
+      white-space: nowrap;
+    }
+  </style>
+  <script rel=preload type=module>
+    // load tests
+    import '../src/es/helpers/Environment.js'
+    import '../src/es/helpers/Debugging.js'
+    import {test as routerTest} from './es/tests/components/controllers/Router.js'
+    import {test as articlesTest} from './es/tests/components/controllers/Article.js'
+    import {test as getTagsTest} from './es/tests/components/controllers/GetTags.js'
+    import {test as homeTest} from './es/tests/components/pages/Home.js'
+    import {test as headerTest} from './es/tests/components/organisms/Header.js'
+    import {test as footerTest} from './es/tests/components/organisms/Footer.js'
+    import {test as listArticlePreviewsTest} from './es/tests/components/organisms/ListArticlePreviews.js'
+    import {test as articlePreviewTest} from './es/tests/components/molecules/ArticlePreview.js'
+    import {test as articleFeedToggleTest} from './es/tests/components/molecules/ArticleFeedToggle.js'
+    import {test as paginationTest} from './es/tests/components/molecules/Pagination.js'
+    import {test as tagListTest} from './es/tests/components/molecules/TagList.js'
+    const timeoutID = setTimeout(() => {
+      document.title += ' - TIMEOUT!'
+      document.body.classList.add('failed')
+    }, 10000);
+    Promise.all([
+      routerTest(),
+      articlesTest(),
+      getTagsTest(),
+      homeTest(),
+      headerTest(),
+      footerTest(),
+      listArticlePreviewsTest(),
+      articlePreviewTest(),
+      articleFeedToggleTest(),
+      paginationTest(),
+      tagListTest()
+    ]).then(results => {
+      let counter = 0
+      let passedCounter = 0
+      let failedCounter = 0
+      results.forEach(result => {
+        counter += result[0]
+        passedCounter += result[1]
+        failedCounter += result[2]
+      })
+      console.info('All done:', { counter, passedCounter, failedCounter })
+      clearTimeout(timeoutID)
+      document.title += ' - FINISHED!'
+    })
+  </script>
+</head>
+<body>
+  <h1>Summary:</h1>
+  <div id=summary></div>
+  <hr>
+  <div id=results></div>
+</body>
+</html>

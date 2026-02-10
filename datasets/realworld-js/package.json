@@ -1,0 +1,20 @@
+{
+  "name": "event-driven-web-components-realworld-example-app",
+  "version": "1.0.1",
+  "description": "Exemplary real world application built with Vanilla JS Web Components in an Event Driven Architecture",
+  "main": "./src/index.html",
+  "scripts": {
+    "dev": "npx http-server ./src -p 8083 -c-1 --cors -o",
+    "fix": "standard --fix"
+  },
+  "author": "weedshaker@gmail.com, https://github.com/tailormadecode, https://github.com/V4L3",
+  "license": "MIT",
+  "devDependencies": {
+    "standard": "*"
+  },
+  "standard": {
+    "ignore": [
+      "/test/"
+    ]
+  }
+}
