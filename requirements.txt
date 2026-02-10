@@ -1,0 +1,7 @@
+agno
+google-generativeai
+python-dotenv
+openai
+dotenv
+pathlib
+load_dotenv
