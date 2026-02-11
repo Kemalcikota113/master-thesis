@@ -67,6 +67,19 @@ Available datasets:
         help=f"Maximum repair iterations [default: {config.MAX_REPAIR_ITERATIONS}]"
     )
 
+    parser.add_argument(
+        "--skip-runtime",
+        action="store_true",
+        help="Skip runtime error capture (faster, less accurate)"
+    )
+
+    parser.add_argument(
+        "--runtime-duration",
+        type=int,
+        default=30,
+        help="How long to capture runtime errors in seconds [default: 30]"
+    )
+
     return parser.parse_args()
 
 
@@ -81,6 +94,10 @@ def main():
         config.MODEL_ID = args.model
     if args.max_iterations:
         config.MAX_REPAIR_ITERATIONS = args.max_iterations
+    if args.skip_runtime:
+        config.RUNTIME_CAPTURE_ENABLED = False
+    if args.runtime_duration:
+        config.RUNTIME_CAPTURE_DURATION = args.runtime_duration
 
     # Resolve paths
     project_root = Path(__file__).parent.parent
@@ -108,6 +125,10 @@ def main():
     print(f"Provider: {config.get_provider_name()}")
     print(f"Model: {config.get_model_id()}")
     print(f"Max iterations: {config.get_max_iterations()}")
+    if args.mode == "multi":
+        print(f"Runtime capture: {'Enabled' if config.get_runtime_capture_enabled() else 'Disabled'}")
+        if config.get_runtime_capture_enabled():
+            print(f"Runtime duration: {config.get_runtime_capture_duration()}s")
     print("=" * 70 + "\n")
 
     try:

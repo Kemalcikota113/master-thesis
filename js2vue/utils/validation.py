@@ -4,6 +4,7 @@ Validation utilities for running vue-tsc and eslint, parsing errors.
 
 import re
 import subprocess
+import asyncio
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -257,3 +258,99 @@ def count_template_script_coherence_errors(errors: List[ValidationError]) -> int
         Number of template-script coherence errors
     """
     return sum(1 for e in errors if e.category == ErrorCategory.TEMPLATE_BINDING)
+
+
+# ============================================================
+# RUNTIME VALIDATION (NEW)
+# ============================================================
+
+# Import RuntimeError from runtime_capture
+try:
+    from js2vue.utils.runtime_capture import RuntimeError
+except ImportError:
+    # Fallback for when runtime_capture is not available
+    @dataclass
+    class RuntimeError:
+        """Fallback RuntimeError definition."""
+        file: str
+        line: int
+        message: str
+        error_type: str
+        stack: str = ""
+        timestamp: str = ""
+        component: str = ""
+        severity: str = "error"
+
+
+@dataclass
+class RuntimeValidationResult(ValidationResult):
+    """
+    Extended ValidationResult that includes runtime errors.
+
+    Combines both static validation (vue-tsc) and runtime validation (browser).
+    """
+    runtime_errors: List[RuntimeError] = field(default_factory=list)
+    npm_errors: List[str] = field(default_factory=list)
+
+
+def run_runtime_validation(
+    project_dir: Path,
+    capture_duration: int = 30,
+    port: int = 5173
+) -> RuntimeValidationResult:
+    """
+    Run both static (vue-tsc) and runtime (browser) validation.
+
+    Args:
+        project_dir: Path to Vue project root
+        capture_duration: How long to capture runtime errors (seconds)
+        port: Port for Vite dev server
+
+    Returns:
+        RuntimeValidationResult with both static and runtime errors
+    """
+    # Import here to avoid circular dependencies
+    from js2vue.utils.runtime_capture import capture_runtime_errors
+
+    # Step 1: Run static validation (existing)
+    static_result = run_vue_tsc(project_dir)
+
+    # Step 2: Run runtime validation (new)
+    print(f"   Starting runtime error capture ({capture_duration}s)...")
+    runtime_errors = asyncio.run(
+        capture_runtime_errors(project_dir, port, capture_duration)
+    )
+    print(f"   Runtime errors captured: {len(runtime_errors)}")
+
+    # Step 3: Combine results
+    return RuntimeValidationResult(
+        success=static_result.success and len(runtime_errors) == 0,
+        errors=static_result.errors,
+        runtime_errors=runtime_errors,
+        npm_errors=[],  # TODO: implement npm error parsing
+        raw_output=static_result.raw_output,
+        validator=static_result.validator
+    )
+
+
+def parse_npm_errors(npm_output: str) -> List[str]:
+    """
+    Extract npm/vite error messages from install/build output.
+
+    Args:
+        npm_output: Raw output from npm install or npm run build
+
+    Returns:
+        List of error messages
+    """
+    errors = []
+
+    # Parse npm ERR! lines
+    for line in npm_output.split('\n'):
+        if 'npm ERR!' in line or 'npm WARN' in line:
+            # Clean up the error message
+            msg = line.replace('npm ERR!', '').replace('npm WARN', '').strip()
+            if msg:  # Skip empty lines
+                errors.append(msg)
+
+    return errors

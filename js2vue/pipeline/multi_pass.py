@@ -27,8 +27,9 @@ from js2vue.utils.vue_project import (
     run_npm_install,
     preserve_directory_structure
 )
-from js2vue.utils.validation import run_vue_tsc, ValidationError
+from js2vue.utils.validation import run_vue_tsc, ValidationError, run_runtime_validation
 from js2vue.utils.metrics import MetricsCollector, TranslationMetrics
+from js2vue.agents.runner_agent import RunnerAgent
 
 
 def run_multi_pass(dataset_name: str, datasets_root: Path, output_root: Path) -> TranslationMetrics:
@@ -163,13 +164,59 @@ Output the complete Vue 3 SFC with TypeScript."""
     if not run_npm_install(output_dir):
         raise RuntimeError("npm install failed")
 
-    # Step 8: Initial validation
-    print(f"\n✅ Running initial validation (vue-tsc)...")
-    validation_result = run_vue_tsc(output_dir)
-    metrics.record_initial_errors(validation_result.errors)
+    # Step 8: Comprehensive Validation (Static + Runtime + Error Analysis)
+    print(f"\n✅ Running comprehensive validation...")
 
-    initial_error_count = len(validation_result.errors)
-    print(f"   Initial errors: {initial_error_count}")
+    # 8a. Static validation (existing)
+    print(f"   Running static validation (vue-tsc)...")
+    static_validation = run_vue_tsc(output_dir)
+    print(f"   Static errors: {len(static_validation.errors)}")
+
+    # 8b. Runtime validation (NEW)
+    runtime_errors = []
+    if config.get_runtime_capture_enabled():
+        capture_duration = config.get_runtime_capture_duration()
+        print(f"   Starting runtime error capture ({capture_duration}s)...")
+        try:
+            from js2vue.utils.runtime_capture import capture_runtime_errors
+            import asyncio
+            runtime_errors = asyncio.run(
+                capture_runtime_errors(output_dir, config.get_vite_port(), capture_duration)
+            )
+            print(f"   Runtime errors: {len(runtime_errors)}")
+        except Exception as e:
+            print(f"   ⚠️  Runtime capture failed: {e}")
+            runtime_errors = []
+    else:
+        print(f"   Runtime error capture disabled (use --runtime-duration to enable)")
+
+    # Record errors in metrics
+    metrics.record_initial_errors(static_validation.errors)
+    metrics.record_runtime_errors(runtime_errors)
+
+    initial_static_count = len(static_validation.errors)
+    initial_runtime_count = len(runtime_errors)
+    initial_error_count = initial_static_count + initial_runtime_count
+
+    print(f"   Total errors: {initial_error_count} ({initial_static_count} static + {initial_runtime_count} runtime)")
+
+    # 8c. Run error analysis with Runner Agent (NEW)
+    print(f"\n🤖 Analyzing errors with Runner Agent...")
+    runner_agent = RunnerAgent(model)
+    error_report = runner_agent.categorize_errors(
+        static_errors=static_validation.errors,
+        runtime_errors=runtime_errors,
+        npm_errors=[]  # TODO: capture from npm install
+    )
+
+    # Save error report
+    report_path = output_dir / "error_report.md"
+    with open(report_path, 'w') as f:
+        f.write(error_report.to_markdown())
+    print(f"   Error report saved: {report_path}")
+
+    # Record error report in metrics
+    metrics.record_error_report(report_path, analysis_tokens=0)  # TODO: track actual token usage
 
     if initial_error_count == 0:
         print("   🎉 No errors! Skipping repair loops.")
@@ -182,6 +229,9 @@ Output the complete Vue 3 SFC with TypeScript."""
         metrics_path = output_dir / "metrics.json"
         metrics.export_to_json(final_metrics, metrics_path)
         return final_metrics
+
+    # Store validation result for repair loop
+    validation_result = static_validation
 
     # Step 9: CHUNK-LEVEL REPAIR LOOP
     print(f"\n🔧 Starting chunk-level repair loop...")
@@ -349,6 +399,11 @@ Output the complete Vue 3 SFC with TypeScript."""
     print("=" * 70)
     print(f"Files translated: {final_metrics.files_translated}")
     print(f"Initial errors: {final_metrics.initial_error_count}")
+    print(f"  - Static: {final_metrics.initial_error_count - final_metrics.runtime_errors}")
+    print(f"  - Runtime: {final_metrics.runtime_errors}")
+    if final_metrics.runtime_error_categories:
+        for error_type, count in final_metrics.runtime_error_categories.items():
+            print(f"    · {error_type}: {count}")
     print(f"Final errors: {final_metrics.final_error_count}")
     print(f"Error reduction: {final_metrics.initial_error_count - final_metrics.final_error_count}")
     if final_metrics.error_reduction_factor != float('inf'):
@@ -356,6 +411,8 @@ Output the complete Vue 3 SFC with TypeScript."""
     print(f"Repair iterations: {final_metrics.repair_iterations}")
     print(f"Template-script coherence errors: {final_metrics.template_script_coherence_errors}")
     print(f"Tokens used: {final_metrics.tokens_used['total']:,}")
+    if final_metrics.error_report_path:
+        print(f"Error report: {final_metrics.error_report_path}")
     print(f"Time: {final_metrics.timing_seconds:.1f}s")
     print(f"Output: {output_dir}")
     print("=" * 70)

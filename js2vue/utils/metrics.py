@@ -44,6 +44,18 @@ class TranslationMetrics:
     repair_iterations: int = 0        # Total APRA iterations
     iteration_deltas: List[int] = field(default_factory=list)  # Error reduction per iteration
 
+    # NEW: Runtime error tracking
+    runtime_errors: int = 0
+    runtime_error_categories: Dict[str, int] = field(default_factory=dict)
+    npm_errors: int = 0
+
+    # NEW: Error report metadata
+    error_report_path: str = ""           # Path to generated .md report
+    error_analysis_tokens: int = 0        # Tokens used by runner agent
+
+    # NEW: APRA effectiveness (with runtime feedback)
+    repair_effectiveness_by_type: Dict[str, float] = field(default_factory=dict)
+
     # Resource metrics
     tokens_used: Dict[str, int] = field(default_factory=dict)  # {prompt: X, completion: Y}
     timing_seconds: float = 0.0
@@ -80,6 +92,12 @@ class MetricsCollector:
         self.tokens_completion = 0
         self.start_time: Optional[float] = None
         self.end_time: Optional[float] = None
+
+        # NEW: Runtime error tracking
+        self.runtime_errors_list: List = []  # Will hold RuntimeError objects
+        self.npm_errors_list: List[str] = []
+        self.error_report_path_str: str = ""
+        self.error_analysis_tokens_count: int = 0
 
     def start_timer(self):
         """Starts the timing measurement."""
@@ -136,6 +154,26 @@ class MetricsCollector:
         self.tokens_prompt += prompt_tokens
         self.tokens_completion += completion_tokens
 
+    def record_runtime_errors(self, errors: List):
+        """
+        Records runtime errors in metrics.
+
+        Args:
+            errors: List of RuntimeError objects
+        """
+        self.runtime_errors_list = errors
+
+    def record_error_report(self, error_report_path: Path, analysis_tokens: int = 0):
+        """
+        Save error report path and track analysis token usage.
+
+        Args:
+            error_report_path: Path to the generated error report .md file
+            analysis_tokens: Number of tokens used by runner agent
+        """
+        self.error_report_path_str = str(error_report_path)
+        self.error_analysis_tokens_count = analysis_tokens
+
     def compute_metrics(self, model_provider: str, model_id: str) -> TranslationMetrics:
         """
         Computes final metrics from collected data.
@@ -179,6 +217,12 @@ class MetricsCollector:
         if self.start_time and self.end_time:
             timing = self.end_time - self.start_time
 
+        # Count runtime errors by type
+        runtime_error_categories = {}
+        for error in self.runtime_errors_list:
+            error_type = getattr(error, 'error_type', 'unknown')
+            runtime_error_categories[error_type] = runtime_error_categories.get(error_type, 0) + 1
+
         return TranslationMetrics(
             dataset_name=self.dataset_name,
             pipeline_mode=self.pipeline_mode,
@@ -191,6 +235,11 @@ class MetricsCollector:
             errors_by_category=category_counts,
             repair_iterations=self.repair_iterations,
             iteration_deltas=self.iteration_deltas,
+            runtime_errors=len(self.runtime_errors_list),
+            runtime_error_categories=runtime_error_categories,
+            npm_errors=len(self.npm_errors_list),
+            error_report_path=self.error_report_path_str,
+            error_analysis_tokens=self.error_analysis_tokens_count,
             tokens_used={
                 "prompt": self.tokens_prompt,
                 "completion": self.tokens_completion,

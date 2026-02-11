@@ -32,6 +32,11 @@ MODEL_ID = "gpt-4o"  # For OpenAI: gpt-4o, gpt-4-turbo, etc.
 # Ensures performance gains come from agent reasoning, not brute-force repetition
 MAX_REPAIR_ITERATIONS = 3
 
+# Runtime capture configuration (NEW)
+RUNTIME_CAPTURE_ENABLED = True       # Enable/disable runtime error capture
+RUNTIME_CAPTURE_DURATION = 30        # How long to capture errors (seconds)
+VITE_PORT = 5173                     # Port for Vite dev server
+
 
 # ============================================================
 # MODEL FACTORY
@@ -98,3 +103,18 @@ def get_model_id() -> str:
 def get_max_iterations() -> int:
     """Returns the maximum repair iterations allowed."""
     return MAX_REPAIR_ITERATIONS
+
+
+def get_runtime_capture_enabled() -> bool:
+    """Returns whether runtime error capture is enabled."""
+    return RUNTIME_CAPTURE_ENABLED
+
+
+def get_runtime_capture_duration() -> int:
+    """Returns the runtime error capture duration in seconds."""
+    return RUNTIME_CAPTURE_DURATION
+
+
+def get_vite_port() -> int:
+    """Returns the Vite dev server port."""
+    return VITE_PORT
