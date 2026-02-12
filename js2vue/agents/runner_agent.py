@@ -52,6 +52,14 @@ class ErrorReport:
 
     def to_markdown(self) -> str:
         """Generate markdown report for debugging."""
+
+        def escape_html_tags(text: str) -> str:
+            """Escape HTML-like tags in text for markdown compatibility."""
+            import re
+            # Replace <tag> with `<tag>` to prevent markdown parser issues
+            text = re.sub(r'<([^>]+)>', r'`<\1>`', text)
+            return text
+
         lines = []
 
         # Header
@@ -64,7 +72,7 @@ class ErrorReport:
         # Summary
         lines.append("## Summary")
         lines.append("")
-        lines.append(self.summary)
+        lines.append(escape_html_tags(self.summary))
         lines.append("")
 
         # Errors by priority
@@ -84,15 +92,20 @@ class ErrorReport:
 
                 # Determine error type
                 error_source = "Static" if isinstance(error.source_error, ValidationError) else "Runtime"
-                lines.append(f"- **Type:** {error_source} ({error.source_error.error_type if hasattr(error.source_error, 'error_type') else 'validation'})")
+                error_type = error.source_error.error_type if hasattr(error.source_error, 'error_type') else 'validation'
+                lines.append(f"- **Type:** {error_source} ({error_type})")
 
-                lines.append(f"- **Message:** {error.source_error.message}")
+                # Escape HTML-like tags in message
+                message = escape_html_tags(error.source_error.message)
+                lines.append(f"- **Message:** {message}")
                 lines.append(f"- **Root Cause:** {'Yes' if error.root_cause else 'No'}")
 
                 if error.blocks:
                     lines.append(f"- **Blocks:** {', '.join(error.blocks)}")
 
-                lines.append(f"- **Repair Strategy:** {error.repair_strategy}")
+                # Escape HTML-like tags in repair strategy
+                strategy = escape_html_tags(error.repair_strategy)
+                lines.append(f"- **Repair Strategy:** {strategy}")
                 lines.append(f"- **Difficulty:** {error.estimated_difficulty}")
                 lines.append("")
 
@@ -100,14 +113,12 @@ class ErrorReport:
         if self.dependency_graph:
             lines.append("## Dependency Graph")
             lines.append("")
-            lines.append("```")
             for error_id, blocked_ids in self.dependency_graph.items():
                 if blocked_ids:
-                    lines.append(f"{error_id}")
+                    lines.append(f"**{error_id}** blocks:")
                     for blocked_id in blocked_ids:
-                        lines.append(f"  └─► {blocked_id}")
-            lines.append("```")
-            lines.append("")
+                        lines.append(f"  - {blocked_id}")
+                    lines.append("")
 
         # Recommended repair order
         lines.append("## Recommended Repair Order")
@@ -141,7 +152,7 @@ For each error:
    - Symptoms: Downstream type errors, template binding issues caused by missing imports
 
 2. Assign priority based on impact:
-   - CRITICAL: Blocks app initialization or compilation (missing Vue imports, syntax errors)
+   - CRITICAL: Blocks app from running (Vite compilation errors, missing Vue imports, syntax errors, <script setup> export issues)
    - HIGH: Major feature broken, runtime exceptions (undefined refs, failed component mounts)
    - MEDIUM: Type errors, warnings that don't break functionality
    - LOW: Style issues, minor type mismatches
@@ -372,7 +383,14 @@ Important:
                 root_cause = False
         else:
             # Runtime error
-            if source_error.error_type == 'exception':
+            error_type = getattr(source_error, 'error_type', 'unknown')
+
+            if error_type == 'vite-compile':
+                # Vite compilation errors are CRITICAL - they prevent app from running
+                priority = 'CRITICAL'
+                category = 'vite-compile'
+                root_cause = True
+            elif error_type == 'exception':
                 priority = 'HIGH'
                 category = 'runtime'
                 root_cause = False

@@ -2,3 +2,5 @@ agno
 openai
 google-genai
 python-dotenv
+playwright
+aiohttp
