@@ -12,6 +12,49 @@ from js2vue.utils.validation import ErrorCategory, ValidationError
 
 
 @dataclass
+class RepairAttempt:
+    """Record of a single repair attempt."""
+    iteration: int
+    files_modified: List[str]
+    error_ids_targeted: List[str]
+    repair_strategy: str
+    errors_before: int
+    errors_after: int
+    runtime_errors_before: int
+    runtime_errors_after: int
+    success: bool                      # Did we reduce errors?
+    timestamp: str
+
+
+@dataclass
+class RepairHistory:
+    """Complete repair history for a translation run."""
+    attempts: List[RepairAttempt] = field(default_factory=list)
+
+    def get_stuck_errors(self, error_reports: List) -> List[str]:
+        """
+        Find error IDs that persist across multiple iterations.
+
+        Args:
+            error_reports: List of ErrorReport objects from each iteration
+
+        Returns:
+            List of error IDs that appear in 2+ consecutive reports
+        """
+        if len(error_reports) < 2:
+            return []
+
+        # Track errors that appear in consecutive reports
+        stuck_errors = []
+        for i in range(len(error_reports) - 1):
+            current_ids = {e.error_id for e in error_reports[i].errors}
+            next_ids = {e.error_id for e in error_reports[i + 1].errors}
+            stuck_errors.extend(current_ids & next_ids)  # Intersection
+
+        return list(set(stuck_errors))
+
+
+@dataclass
 class TranslationMetrics:
     """
     Metrics for a single translation run (thesis quantitative data).
@@ -55,6 +98,9 @@ class TranslationMetrics:
 
     # NEW: APRA effectiveness (with runtime feedback)
     repair_effectiveness_by_type: Dict[str, float] = field(default_factory=dict)
+
+    # NEW: Repair history tracking (APRA iterations)
+    repair_history: 'RepairHistory' = field(default_factory=lambda: RepairHistory())
 
     # Resource metrics
     tokens_used: Dict[str, int] = field(default_factory=dict)  # {prompt: X, completion: Y}

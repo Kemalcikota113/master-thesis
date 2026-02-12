@@ -13,6 +13,7 @@ This produces experimental data for RQ2 and RQ3 comparison.
 
 from pathlib import Path
 from typing import List, Dict
+from datetime import datetime
 
 from js2vue import config
 from js2vue.agents.translator_agent import (
@@ -200,8 +201,24 @@ Output the complete Vue 3 SFC with TypeScript."""
 
     print(f"   Total errors: {initial_error_count} ({initial_static_count} static + {initial_runtime_count} runtime)")
 
-    # 8c. Run error analysis with Runner Agent (NEW)
-    print(f"\n🤖 Analyzing errors with Runner Agent...")
+    # 8c. Create logs directory for research artifacts
+    logs_dir = output_dir / "logs"
+    logs_dir.mkdir(exist_ok=True)
+    print(f"\n📁 Logs directory created: {logs_dir}")
+
+    # Open repair log file for detailed tracking
+    repair_log_path = logs_dir / "repair_log.txt"
+    repair_log = open(repair_log_path, 'w', encoding='utf-8')
+
+    def log_and_print(message: str):
+        """Helper to log to both console and file."""
+        print(message)
+        repair_log.write(message + '\n')
+        repair_log.flush()
+
+    log_and_print(f"\n🤖 Analyzing errors with Runner Agent...")
+
+    # 8d. Run error analysis with Runner Agent
     runner_agent = RunnerAgent(model)
     error_report = runner_agent.categorize_errors(
         static_errors=static_validation.errors,
@@ -209,17 +226,25 @@ Output the complete Vue 3 SFC with TypeScript."""
         npm_errors=[]  # TODO: capture from npm install
     )
 
-    # Save error report
-    report_path = output_dir / "error_report.md"
-    with open(report_path, 'w') as f:
+    # Save initial error report with timestamp
+    from datetime import datetime
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    initial_report_path = logs_dir / f"error_report_initial_{timestamp}.md"
+    with open(initial_report_path, 'w') as f:
         f.write(error_report.to_markdown())
-    print(f"   Error report saved: {report_path}")
+    log_and_print(f"   Error report saved: {initial_report_path}")
+
+    # Also save to root for backwards compatibility
+    root_report_path = output_dir / "error_report.md"
+    with open(root_report_path, 'w') as f:
+        f.write(error_report.to_markdown())
 
     # Record error report in metrics
-    metrics.record_error_report(report_path, analysis_tokens=0)  # TODO: track actual token usage
+    metrics.record_error_report(initial_report_path, analysis_tokens=0)  # TODO: track actual token usage
 
     if initial_error_count == 0:
-        print("   🎉 No errors! Skipping repair loops.")
+        log_and_print("   🎉 No errors! Skipping repair loops.")
+        repair_log.close()
         metrics.record_final_errors([])
         metrics.stop_timer()
         final_metrics = metrics.compute_metrics(
@@ -228,139 +253,212 @@ Output the complete Vue 3 SFC with TypeScript."""
         )
         metrics_path = output_dir / "metrics.json"
         metrics.export_to_json(final_metrics, metrics_path)
+
+        # Save to logs as well
+        logs_metrics_path = logs_dir / f"metrics_final_{timestamp}.json"
+        metrics.export_to_json(final_metrics, logs_metrics_path)
+
         return final_metrics
 
     # Store validation result for repair loop
     validation_result = static_validation
 
-    # Step 9: CHUNK-LEVEL REPAIR LOOP
-    print(f"\n🔧 Starting chunk-level repair loop...")
-    print(f"   Max iterations: {config.get_max_iterations()}")
+    # Step 9: APRA REPAIR LOOP (Automatic Program Repair Agent)
+    log_and_print(f"\n🔧 Starting automatic repair loop with APRA...")
+    log_and_print(f"   Max iterations: {config.get_max_iterations()}")
 
-    # Group errors by file
-    errors_by_file = group_errors_by_file(validation_result.errors)
-    print(f"   Files with errors: {len(errors_by_file)}")
+    # Import healer agent
+    from js2vue.agents.healer_agent import create_healer_agent, repair_vue_file, load_original_js
+    from js2vue.utils.metrics import RepairHistory, RepairAttempt
 
-    current_errors = initial_error_count
+    # Initialize APRA agent
+    healer_agent = create_healer_agent(model)
+    repair_history = RepairHistory()
+
+    current_static_errors = initial_static_count
+    current_runtime_errors = initial_runtime_count
+    current_error_report = error_report
 
     for iteration in range(1, config.get_max_iterations() + 1):
-        print(f"\n   Iteration {iteration}/{config.get_max_iterations()}")
+        iter_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_and_print(f"\n   === Iteration {iteration}/{config.get_max_iterations()} ===")
+        log_and_print(f"   Timestamp: {iter_timestamp}")
 
-        errors_before = current_errors
-        files_fixed = 0
+        errors_before_total = current_static_errors + current_runtime_errors
+        files_modified = []
+        error_ids_targeted = []
 
-        for file_path, file_errors in errors_by_file.items():
-            if not file_errors:
-                continue
+        # Repair errors by priority (CRITICAL and HIGH first)
+        priority_errors = [e for e in current_error_report.errors
+                          if e.priority in ['CRITICAL', 'HIGH']]
 
-            print(f"      Repairing {file_path} ({len(file_errors)} errors)...")
+        if not priority_errors:
+            # If no critical/high, try medium priority
+            priority_errors = [e for e in current_error_report.errors
+                             if e.priority == 'MEDIUM']
 
-            # Read current file content
-            full_path = output_dir / "src" / file_path
+        log_and_print(f"   Targeting {len(priority_errors)} errors ({', '.join(set(e.priority for e in priority_errors))} priority)")
+
+        for error_entry in priority_errors:
+            file_path = error_entry.source_error.file
+
+            # Build full path
+            if file_path.startswith('src/'):
+                full_path = output_dir / file_path
+            else:
+                full_path = output_dir / "src" / file_path
+
             if not full_path.exists():
+                log_and_print(f"      ⚠️  File not found: {file_path}")
                 continue
 
+            # Read current broken code
             with open(full_path, 'r', encoding='utf-8') as f:
                 broken_code = f.read()
 
-            # TODO: Invoke healer_agent (APRA)
-            # This is where the APRA (Automatic Program Repair Agent) will be called
-            # Once implemented in agents/healer_agent.py, replace this TODO with:
-            #
-            # from js2vue.agents.healer_agent import create_healer_agent, repair_vue_code
-            # healer = create_healer_agent(model)
-            # fixed_code = repair_vue_code(
-            #     healer,
-            #     broken_code=broken_code,
-            #     errors=file_errors,
-            #     file_path=file_path
-            # )
-            #
-            # # Write fixed code
-            # with open(full_path, 'w', encoding='utf-8') as f:
-            #     f.write(fixed_code)
-            #
-            # files_fixed += 1
+            # Get previous attempts for this file (from repair history)
+            previous_attempts = [a for a in repair_history.attempts
+                               if str(full_path) in a.files_modified]
 
-            # Placeholder: For now, no repair happens
-            pass
+            # Load original JavaScript for context
+            original_js_code = load_original_js(
+                datasets_root=datasets_root,
+                dataset_name=dataset_name,
+                vue_file_path=file_path
+            )
 
-        # Re-validate after chunk-level repairs
-        # TODO: Uncomment when APRA is implemented
-        # validation_result = run_vue_tsc(output_dir)
-        # current_errors = len(validation_result.errors)
-        # errors_after = current_errors
-        #
-        # # Record iteration metrics
-        # metrics.record_repair_iteration(errors_before, errors_after)
-        #
-        # print(f"      Errors: {errors_before} → {errors_after} (Δ {errors_before - errors_after})")
-        #
-        # # Break if no improvement
-        # if errors_after >= errors_before:
-        #     print(f"      No improvement, stopping chunk-level repair")
-        #     break
-        #
-        # # Break if all errors resolved
-        # if errors_after == 0:
-        #     print(f"      ✅ All errors resolved!")
-        #     break
-        #
-        # # Update errors_by_file for next iteration
-        # errors_by_file = group_errors_by_file(validation_result.errors)
+            log_and_print(f"      Repairing {file_path} ({error_entry.priority}: {error_entry.category})...")
 
-        # Placeholder: Break after first iteration since no repair happens yet
-        print(f"      ⚠️  APRA not implemented yet - skipping actual repair")
-        break
+            # Run APRA repair
+            try:
+                fixed_code = repair_vue_file(
+                    healer_agent=healer_agent,
+                    broken_code=broken_code,
+                    error_entry=error_entry,
+                    file_path=file_path,
+                    original_js_code=original_js_code,
+                    previous_attempts=previous_attempts
+                )
 
-    # Step 10: ASSEMBLY-LEVEL REPAIR LOOP
-    print(f"\n🔧 Starting assembly-level repair loop...")
-    print(f"   (Targets cross-component errors)")
+                # Write fixed code
+                with open(full_path, 'w', encoding='utf-8') as f:
+                    f.write(fixed_code)
 
-    # TODO: Implement assembly-level repair
-    # This loop handles errors that span multiple files, such as:
-    # - Missing imports between components
-    # - Type mismatches in component interfaces
-    # - Prop passing errors
-    #
-    # for iteration in range(1, config.get_max_iterations() + 1):
-    #     print(f"\n   Iteration {iteration}/{config.get_max_iterations()}")
-    #
-    #     validation_result = run_vue_tsc(output_dir)
-    #     errors_before = len(validation_result.errors)
-    #
-    #     if errors_before == 0:
-    #         break
-    #
-    #     # Group errors by type (e.g., missing imports, type mismatches)
-    #     import_errors = [e for e in validation_result.errors
-    #                      if e.category == ErrorCategory.MISSING_IMPORT]
-    #
-    #     # TODO: Invoke healer_agent with cross-component context
-    #     # healer = create_healer_agent(model)
-    #     # fixed_files = repair_cross_component_errors(
-    #     #     healer,
-    #     #     errors=import_errors,
-    #     #     project_dir=output_dir
-    #     # )
-    #
-    #     # Re-validate
-    #     # validation_result = run_vue_tsc(output_dir)
-    #     # errors_after = len(validation_result.errors)
-    #     #
-    #     # metrics.record_repair_iteration(errors_before, errors_after)
-    #     #
-    #     # if errors_after >= errors_before:
-    #     #     break
+                files_modified.append(str(full_path))
+                error_ids_targeted.append(error_entry.error_id)
 
-    print(f"   ⚠️  APRA not implemented yet - skipping assembly-level repair")
+            except Exception as e:
+                log_and_print(f"         ⚠️  Repair failed: {e}")
+                continue
 
-    # Step 11: Final validation and metrics
+        # Re-validate (static + runtime)
+        log_and_print(f"\n   Re-validating (static + runtime)...")
+
+        # Static validation
+        new_static_validation = run_vue_tsc(output_dir)
+        errors_after_static = len(new_static_validation.errors)
+
+        # Runtime validation (if enabled)
+        new_runtime_errors = []
+        if config.get_runtime_capture_enabled():
+            capture_duration = config.get_runtime_capture_duration()
+            log_and_print(f"      Running runtime capture ({capture_duration}s)...")
+            try:
+                from js2vue.utils.runtime_capture import capture_runtime_errors
+                import asyncio
+                new_runtime_errors = asyncio.run(
+                    capture_runtime_errors(output_dir, config.get_vite_port(), capture_duration)
+                )
+            except Exception as e:
+                log_and_print(f"         ⚠️  Runtime capture failed: {e}")
+                new_runtime_errors = []
+
+        errors_after_runtime = len(new_runtime_errors)
+        errors_after_total = errors_after_static + errors_after_runtime
+
+        log_and_print(f"      Errors: {errors_before_total} → {errors_after_total}")
+        log_and_print(f"         Static: {current_static_errors} → {errors_after_static}")
+        log_and_print(f"         Runtime: {current_runtime_errors} → {errors_after_runtime}")
+
+        # Record repair attempt
+        attempt = RepairAttempt(
+            iteration=iteration,
+            files_modified=files_modified,
+            error_ids_targeted=error_ids_targeted,
+            repair_strategy=f"Priority-based repair ({len(priority_errors)} errors targeted)",
+            errors_before=current_static_errors,
+            errors_after=errors_after_static,
+            runtime_errors_before=current_runtime_errors,
+            runtime_errors_after=errors_after_runtime,
+            success=errors_after_total < errors_before_total,
+            timestamp=datetime.now().isoformat()
+        )
+        repair_history.attempts.append(attempt)
+
+        # Save iteration-specific artifacts to logs/
+        iteration_report_path = logs_dir / f"error_report_iter_{iteration}_{iter_timestamp}.md"
+        if errors_after_total > 0:
+            # Re-analyze errors for this iteration
+            iter_error_report = runner_agent.categorize_errors(
+                static_errors=new_static_validation.errors,
+                runtime_errors=new_runtime_errors,
+                npm_errors=[]
+            )
+            with open(iteration_report_path, 'w') as f:
+                f.write(iter_error_report.to_markdown())
+            log_and_print(f"      Error report saved: {iteration_report_path}")
+        else:
+            # No errors, create empty report
+            with open(iteration_report_path, 'w') as f:
+                f.write(f"# Error Report - Iteration {iteration}\n\n✅ All errors resolved!")
+
+        # Save iteration metrics snapshot
+        iteration_metrics_path = logs_dir / f"metrics_iter_{iteration}_{iter_timestamp}.json"
+        interim_metrics = metrics.compute_metrics(
+            config.get_provider_name(),
+            config.get_model_id()
+        )
+        metrics.export_to_json(interim_metrics, iteration_metrics_path)
+
+        # Record in metrics
+        metrics.record_repair_iteration(errors_before_total, errors_after_total)
+
+        # Check stopping conditions
+        if errors_after_total == 0:
+            log_and_print(f"      ✅ All errors resolved!")
+            break
+
+        if errors_after_total >= errors_before_total:
+            log_and_print(f"      ⚠️  No progress made (or new errors introduced), stopping iteration")
+            break
+
+        # Update for next iteration
+        current_static_errors = errors_after_static
+        current_runtime_errors = errors_after_runtime
+
+        # Re-run Runner Agent to analyze remaining errors
+        if iteration < config.get_max_iterations():
+            log_and_print(f"\n   Re-analyzing remaining errors...")
+            current_error_report = runner_agent.categorize_errors(
+                static_errors=new_static_validation.errors,
+                runtime_errors=new_runtime_errors,
+                npm_errors=[]
+            )
+
+    # Store repair history in metrics (will be exported to JSON)
+    metrics.repair_history = repair_history
+
+    log_and_print(f"\n   Repair loop complete. {len(repair_history.attempts)} iteration(s) executed.")
+
+    # Close repair log
+    repair_log.close()
+
+    # Step 10: Final validation and metrics
     print(f"\n✅ Running final validation...")
     final_validation = run_vue_tsc(output_dir)
     metrics.record_final_errors(final_validation.errors)
 
-    # Step 12: Display results
+    # Step 11: Display results
     print("\n" + "=" * 70)
     print("TRANSLATION COMPLETE")
     print("=" * 70)
@@ -383,17 +481,33 @@ Output the complete Vue 3 SFC with TypeScript."""
         for error in final_validation.errors[:5]:
             print(f"   {error.file}:{error.line} - {error.message[:80]}")
 
-    # Step 13: Compute and export metrics
+    # Step 12: Compute and export metrics
     metrics.stop_timer()
     final_metrics = metrics.compute_metrics(
         config.get_provider_name(),
         config.get_model_id()
     )
 
+    # Save final metrics to root (for backwards compatibility)
     metrics_path = output_dir / "metrics.json"
     metrics.export_to_json(final_metrics, metrics_path)
 
-    # Step 14: Print summary
+    # Save final metrics to logs/ with timestamp
+    final_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    logs_metrics_path = logs_dir / f"metrics_final_{final_timestamp}.json"
+    metrics.export_to_json(final_metrics, logs_metrics_path)
+
+    # Save final error report to logs/
+    final_error_report_path = logs_dir / f"error_report_final_{final_timestamp}.md"
+    final_error_report = runner_agent.categorize_errors(
+        static_errors=final_validation.errors,
+        runtime_errors=[],  # Runtime errors not re-captured in final validation
+        npm_errors=[]
+    )
+    with open(final_error_report_path, 'w') as f:
+        f.write(final_error_report.to_markdown())
+
+    # Step 13: Print summary
     print("\n" + "=" * 70)
     print("SUMMARY")
     print("=" * 70)
@@ -411,10 +525,19 @@ Output the complete Vue 3 SFC with TypeScript."""
     print(f"Repair iterations: {final_metrics.repair_iterations}")
     print(f"Template-script coherence errors: {final_metrics.template_script_coherence_errors}")
     print(f"Tokens used: {final_metrics.tokens_used['total']:,}")
-    if final_metrics.error_report_path:
-        print(f"Error report: {final_metrics.error_report_path}")
     print(f"Time: {final_metrics.timing_seconds:.1f}s")
-    print(f"Output: {output_dir}")
+    print(f"\nOutput directory: {output_dir}")
+    print(f"\n📁 Research Artifacts:")
+    print(f"   Repair log: {repair_log_path}")
+    print(f"   Logs directory: {logs_dir}")
+    print(f"   - Initial error report: {initial_report_path.name}")
+    print(f"   - Final error report: {final_error_report_path.name}")
+    print(f"   - Iteration reports: error_report_iter_N_*.md")
+    print(f"   - Iteration metrics: metrics_iter_N_*.json")
+    print(f"   - Final metrics: {logs_metrics_path.name}")
+    print(f"\n💡 Quick access:")
+    print(f"   Main metrics: {metrics_path}")
+    print(f"   Main error report: {root_report_path}")
     print("=" * 70)
 
     return final_metrics

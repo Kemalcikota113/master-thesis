@@ -514,3 +514,97 @@ Remember:
             'effectiveness_score': effectiveness_score,
             'feedback': feedback
         }
+
+    def evaluate_repair_iteration(
+        self,
+        before_report: ErrorReport,
+        after_report: ErrorReport,
+        files_modified: List[str]
+    ) -> Dict:
+        """
+        Evaluate repair effectiveness using LLM analysis.
+
+        This method provides structured feedback on repair iteration effectiveness,
+        identifying stuck errors, new errors, and recommending next strategies.
+
+        Args:
+            before_report: ErrorReport before repair iteration
+            after_report: ErrorReport after repair iteration
+            files_modified: List of files that were modified during repair
+
+        Returns:
+            Dictionary with:
+            - errors_fixed: Number of errors resolved
+            - new_errors_introduced: Number of new errors added
+            - stuck_errors: List of error IDs that persist
+            - effectiveness_score: 0.0 to 1.0
+            - feedback: LLM analysis text
+            - recommended_next_strategy: Suggested approach for next iteration
+        """
+        # Calculate basic metrics
+        errors_before = len(before_report.errors)
+        errors_after = len(after_report.errors)
+        errors_fixed = errors_before - errors_after
+
+        # Identify stuck errors (errors that appear in both reports)
+        before_ids = {e.error_id for e in before_report.errors}
+        after_ids = {e.error_id for e in after_report.errors}
+        stuck_error_ids = list(before_ids & after_ids)
+
+        # Identify new errors (errors in after but not in before)
+        new_error_ids = list(after_ids - before_ids)
+
+        # Calculate effectiveness score
+        if errors_before > 0:
+            effectiveness_score = max(0.0, errors_fixed / errors_before)
+        else:
+            effectiveness_score = 1.0
+
+        # Build context for LLM analysis
+        context_lines = []
+        context_lines.append(f"Repair iteration completed on {len(files_modified)} files.")
+        context_lines.append(f"Errors before: {errors_before}")
+        context_lines.append(f"Errors after: {errors_after}")
+        context_lines.append(f"Errors fixed: {errors_fixed}")
+
+        if stuck_error_ids:
+            context_lines.append(f"\nStuck errors ({len(stuck_error_ids)}):")
+            for error_id in stuck_error_ids[:5]:  # Show first 5
+                error = next((e for e in after_report.errors if e.error_id == error_id), None)
+                if error:
+                    context_lines.append(f"  - {error_id}: {error.category} in {error.source_error.file}")
+
+        if new_error_ids:
+            context_lines.append(f"\nNew errors introduced ({len(new_error_ids)}):")
+            for error_id in new_error_ids[:5]:  # Show first 5
+                error = next((e for e in after_report.errors if e.error_id == error_id), None)
+                if error:
+                    context_lines.append(f"  - {error_id}: {error.category} in {error.source_error.file}")
+
+        context = '\n'.join(context_lines)
+
+        # Generate feedback using LLM (optional - can be skipped for performance)
+        feedback = f"Fixed {errors_fixed} errors. "
+        if stuck_error_ids:
+            feedback += f"{len(stuck_error_ids)} errors remain stuck. "
+        if new_error_ids:
+            feedback += f"{len(new_error_ids)} new errors introduced. "
+
+        # Recommend next strategy
+        if stuck_error_ids and not new_error_ids:
+            recommended_strategy = "Try alternative repair approaches for stuck errors"
+        elif new_error_ids:
+            recommended_strategy = "Focus on fixing newly introduced errors first"
+        elif errors_after > 0:
+            recommended_strategy = "Continue with remaining errors in priority order"
+        else:
+            recommended_strategy = "All errors resolved"
+
+        return {
+            'errors_fixed': errors_fixed,
+            'new_errors_introduced': len(new_error_ids),
+            'stuck_errors': stuck_error_ids,
+            'effectiveness_score': effectiveness_score,
+            'feedback': feedback,
+            'recommended_next_strategy': recommended_strategy
+        }
