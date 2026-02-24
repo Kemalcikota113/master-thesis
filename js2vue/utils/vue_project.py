@@ -323,6 +323,9 @@ def preserve_directory_structure(
     """
     Creates nested directory structure and returns the output file path.
 
+    Converts filenames to PascalCase to match Vue component naming conventions
+    (e.g., view.js → View.vue, app.js → App.vue).
+
     Args:
         relative_path: Relative path from dataset root (e.g., "src/components/Home.js")
         output_dir: Vue project root directory
@@ -331,11 +334,39 @@ def preserve_directory_structure(
         Path where the .vue file should be written
 
     Example:
-        >>> preserve_directory_structure("src/components/pages/Home.js", Path("output/vue"))
-        Path("output/vue/src/components/pages/Home.vue")
+        >>> preserve_directory_structure("src/view.js", Path("output/vue"))
+        Path("output/vue/src/View.vue")
     """
     # Convert .js to .vue
     vue_path = Path(relative_path).with_suffix('.vue')
+
+    # Strip leading "src/" if present to avoid double src/ prefix
+    # Files from datasets/project/src/app.js should go to output/project/src/app.vue
+    # NOT output/project/src/src/app.vue
+    vue_path_str = str(vue_path)
+    if vue_path_str.startswith('src/') or vue_path_str.startswith('src\\'):
+        vue_path_str = vue_path_str[4:]  # Remove "src/" or "src\" prefix
+
+    # Convert filename to PascalCase (Vue component naming convention)
+    # e.g., view.vue → View.vue, app.vue → App.vue, todo-item.vue → TodoItem.vue
+    path_parts = Path(vue_path_str).parts
+    if path_parts:
+        # Get filename without extension
+        filename = Path(path_parts[-1]).stem
+        extension = Path(path_parts[-1]).suffix
+
+        # Convert to PascalCase
+        # Handle kebab-case and snake_case: todo-item → TodoItem, todo_item → TodoItem
+        pascal_name = ''.join(word.capitalize() for word in filename.replace('-', '_').split('_'))
+        pascal_filename = pascal_name + extension
+
+        # Reconstruct path with PascalCase filename
+        if len(path_parts) > 1:
+            vue_path = Path(*path_parts[:-1]) / pascal_filename
+        else:
+            vue_path = Path(pascal_filename)
+    else:
+        vue_path = Path(vue_path_str)
 
     # Create full output path
     output_path = output_dir / "src" / vue_path
@@ -344,3 +375,33 @@ def preserve_directory_structure(
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     return output_path
+
+
+def copy_static_assets(
+    css_files: list,
+    output_dir: Path
+):
+    """
+    Copies CSS files to the Vue project.
+
+    Args:
+        css_files: List of (relative_path, absolute_path) tuples for CSS files
+        output_dir: Vue project root directory
+    """
+    import shutil
+
+    for relative_path, absolute_path in css_files:
+        # Strip "src/" prefix if present
+        rel_path_str = str(relative_path)
+        if rel_path_str.startswith('src/') or rel_path_str.startswith('src\\'):
+            rel_path_str = rel_path_str[4:]
+
+        # Copy to output/src/assets/ directory
+        output_path = output_dir / "src" / "assets" / rel_path_str
+
+        # Create parent directories
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Copy file
+        shutil.copy2(absolute_path, output_path)
+        print(f"   Copied CSS: {relative_path} → {output_path.relative_to(output_dir)}")

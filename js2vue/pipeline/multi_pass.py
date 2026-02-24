@@ -21,12 +21,13 @@ from js2vue.agents.translator_agent import (
     translate_js_to_vue,
     get_token_usage
 )
-from js2vue.utils.file_discovery import discover_js_files, get_component_name
+from js2vue.utils.file_discovery import discover_js_files, get_component_name, discover_static_assets
 from js2vue.utils.vue_project import (
     scaffold_vue_project,
     generate_app_vue,
     run_npm_install,
-    preserve_directory_structure
+    preserve_directory_structure,
+    copy_static_assets
 )
 from js2vue.utils.validation import run_vue_tsc, ValidationError, run_runtime_validation
 from js2vue.utils.metrics import MetricsCollector, TranslationMetrics
@@ -79,12 +80,23 @@ def run_multi_pass(dataset_name: str, datasets_root: Path, output_root: Path) ->
 
     print(f"   Found {len(js_files)} JavaScript files")
 
+    # Step 2b: Discover static assets (HTML, CSS)
+    print(f"\n🔍 Discovering static assets...")
+    static_assets = discover_static_assets(dataset_path)
+    print(f"   Found {len(static_assets['html'])} HTML files")
+    print(f"   Found {len(static_assets['css'])} CSS files")
+
     # Step 3: Scaffold Vue 3 project
     output_dir = output_root / f"{dataset_name}-vue"
     project_name = f"{dataset_name}-vue"
 
     print(f"\n🏗️  Scaffolding Vue 3 project...")
     scaffold_vue_project(output_dir, project_name)
+
+    # Step 3b: Copy CSS files
+    if static_assets['css']:
+        print(f"\n📋 Copying CSS files...")
+        copy_static_assets(static_assets['css'], output_dir)
 
     # Step 4: Initialize translator agent
     print(f"\n🤖 Initializing translator agent...")
@@ -278,6 +290,8 @@ Output the complete Vue 3 SFC with TypeScript."""
     current_static_errors = initial_static_count
     current_runtime_errors = initial_runtime_count
     current_error_report = error_report
+    iterations_without_progress = 0  # Track stuck iterations
+    max_stuck_iterations = 2  # Allow 2 iterations without progress before stopping
 
     for iteration in range(1, config.get_max_iterations() + 1):
         iter_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -296,6 +310,15 @@ Output the complete Vue 3 SFC with TypeScript."""
             # If no critical/high, try medium priority
             priority_errors = [e for e in current_error_report.errors
                              if e.priority == 'MEDIUM']
+
+        if not priority_errors:
+            # If no medium either, try LOW priority
+            priority_errors = [e for e in current_error_report.errors
+                             if e.priority == 'LOW']
+
+        if not priority_errors:
+            log_and_print(f"   ⚠️  No errors to target (all remaining errors may be unfixable)")
+            break
 
         log_and_print(f"   Targeting {len(priority_errors)} errors ({', '.join(set(e.priority for e in priority_errors))} priority)")
 
@@ -428,9 +451,18 @@ Output the complete Vue 3 SFC with TypeScript."""
             log_and_print(f"      ✅ All errors resolved!")
             break
 
+        # Track progress
         if errors_after_total >= errors_before_total:
-            log_and_print(f"      ⚠️  No progress made (or new errors introduced), stopping iteration")
-            break
+            iterations_without_progress += 1
+            log_and_print(f"      ⚠️  No progress made in this iteration ({iterations_without_progress}/{max_stuck_iterations})")
+
+            if iterations_without_progress >= max_stuck_iterations:
+                log_and_print(f"      ⚠️  No progress after {max_stuck_iterations} iterations, stopping repair loop")
+                log_and_print(f"      Stuck on {errors_after_total} errors (Static: {errors_after_static}, Runtime: {errors_after_runtime})")
+                break
+        else:
+            # Progress made, reset counter
+            iterations_without_progress = 0
 
         # Update for next iteration
         current_static_errors = errors_after_static

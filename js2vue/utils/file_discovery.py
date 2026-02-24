@@ -136,6 +136,61 @@ def discover_js_files(dataset_path: str | Path) -> List[Tuple[str, Path]]:
     return discovered_files
 
 
+def discover_static_assets(dataset_path: str | Path) -> dict:
+    """
+    Discovers HTML and CSS files in a dataset directory.
+
+    Args:
+        dataset_path: Path to the dataset root directory
+
+    Returns:
+        Dictionary with 'html' and 'css' keys containing lists of (relative_path, absolute_path) tuples
+
+    Example:
+        >>> discover_static_assets("datasets/todomvc-es6")
+        {
+            'html': [("src/index.html", Path(".../datasets/todomvc-es6/src/index.html"))],
+            'css': [("src/app.css", Path(".../datasets/todomvc-es6/src/app.css"))]
+        }
+    """
+    dataset_path = Path(dataset_path)
+
+    if not dataset_path.exists():
+        raise FileNotFoundError(f"Dataset path does not exist: {dataset_path}")
+
+    # Search in src/ if it exists, otherwise root
+    search_root = dataset_path / "src" if (dataset_path / "src").exists() else dataset_path
+
+    html_files = []
+    css_files = []
+
+    def traverse(current_path: Path, relative_base: Path):
+        """Recursive traversal helper."""
+        if not current_path.is_dir():
+            return
+
+        if should_exclude_directory(current_path):
+            return
+
+        for item in current_path.iterdir():
+            if item.is_dir():
+                traverse(item, relative_base)
+            elif item.is_file():
+                relative_path = str(item.relative_to(relative_base))
+                if item.suffix == '.html':
+                    html_files.append((relative_path, item))
+                elif item.suffix == '.css':
+                    css_files.append((relative_path, item))
+
+    # Start traversal
+    traverse(search_root, dataset_path)
+
+    return {
+        'html': sorted(html_files, key=lambda x: x[0]),
+        'css': sorted(css_files, key=lambda x: x[0])
+    }
+
+
 def get_component_name(file_path: str | Path) -> str:
     """
     Extracts a component name from a file path.

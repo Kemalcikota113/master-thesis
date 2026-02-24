@@ -30,7 +30,7 @@ MODEL_ID = "gpt-4o"  # For OpenAI: gpt-4o, gpt-4-turbo, etc.
 
 # Maximum repair iterations (internal validity constraint)
 # Ensures performance gains come from agent reasoning, not brute-force repetition
-MAX_REPAIR_ITERATIONS = 3
+MAX_REPAIR_ITERATIONS = 5
 
 # Runtime capture configuration (NEW)
 RUNTIME_CAPTURE_ENABLED = True       # Enable/disable runtime error capture
