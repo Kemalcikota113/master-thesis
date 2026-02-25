@@ -39,3 +39,36 @@ Since some codebases that i pull from github sometimes include files not necessa
  * Removed test/fuzz/build-system noise so translation focuses on core library implementation.
  * Removed compiled outputs to prevent non-source artifacts from influencing the pipeline.
  * Preserved only core C source/header files needed for file-by-file C -> Rust translation.
+
+### http-parser-main
+
+* **Removed Files:**
+ * `test.c`
+ * `bench.c`
+ * `contrib/`
+ * `fuzzers/`
+ * build/config metadata: `Makefile`, `http_parser.gyp`, `.travis.yml`, `.mailmap`, `.gitignore`, `AUTHORS`
+
+* **Kept Files (cleaned set):**
+ * `http_parser.c`
+ * `http_parser.h`
+ * `LICENSE-MIT`, `README.md`
+
+* **Cleaning rationale:**
+ * Removed benchmark/test/fuzz files to keep translation input focused on core parser implementation.
+ * Removed build-system and CI metadata not required for file-level translation.
+
+### kilo-master
+
+* **Removed Files:**
+ * `Makefile`
+ * `TODO`
+ * `.gitignore`
+
+* **Kept Files (cleaned set):**
+ * `kilo.c`
+ * `LICENSE`, `README.md`
+
+* **Cleaning rationale:**
+ * Preserved the single core source file and minimal metadata.
+ * Removed auxiliary project files that do not improve translation context.

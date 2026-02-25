@@ -37,3 +37,39 @@ Note: cleaned cJSON contains only core source/header files for translation quali
 
 * Command exits successfully (exit code `0`)
 * Object files are produced: `cJSON.o`, `cJSON_Utils.o`
+
+## http-parser-main
+
+Note: cleaned http-parser contains core parser source/header files only, so verification here is compile-only.
+
+### Prerequisites:
+
+* `gcc` (or compatible C compiler available as `cc`)
+
+### Commands:
+
+1. `cd datasets-c/http-parser-main`
+2. `cc -std=c99 -Wall -Wextra -Werror -c http_parser.c`
+
+### Verification:
+
+* Command exits successfully (exit code `0`)
+* Object file is produced: `http_parser.o`
+
+## kilo-master
+
+Note: cleaned kilo contains core source file only, so verification here is compile-only.
+
+### Prerequisites:
+
+* `gcc` (or compatible C compiler available as `cc`)
+
+### Commands:
+
+1. `cd datasets-c/kilo-master`
+2. `cc -std=c99 -Wall -W -pedantic -c kilo.c`
+
+### Verification:
+
+* Command exits successfully (exit code `0`)
+* Object file is produced: `kilo.o`
