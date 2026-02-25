@@ -1,6 +1,6 @@
 ## Dataset reference guide
 
-This MarkDown file showcases how to validate the cleaned datasets in `datasets-c` before using the `c2rust` pipeline.
+This MarkDown file showcases how to run each raw dataset in `datasets-c/raw-data` to verify original repository health before cleaning and translation.
 
 ## sds-master
 
@@ -11,7 +11,7 @@ This MarkDown file showcases how to validate the cleaned datasets in `datasets-c
 
 ### Commands:
 
-1. `cd datasets-c/sds-master`
+1. `cd datasets-c/raw-data/sds-master`
 2. `make clean && make`
 3. `./sds-test`
 
@@ -21,8 +21,6 @@ This MarkDown file showcases how to validate the cleaned datasets in `datasets-c
 
 ## cJSON
 
-Note: cleaned cJSON contains only core source/header files for translation quality, so verification here is compile-only.
-
 ### Prerequisites:
 
 * `gcc` (or compatible C compiler available as `cc`)
@@ -30,10 +28,11 @@ Note: cleaned cJSON contains only core source/header files for translation quali
 
 ### Commands:
 
-1. `cd datasets-c/cjson/cJSON-master`
-2. `cc -std=c99 -Wall -Wextra -pedantic -c cJSON.c cJSON_Utils.c`
+1. `cd datasets-c/raw-data/cJSON-master`
+2. `make clean && make`
+3. `make test`
 
 ### Verification:
 
+* Test binary runs without errors and prints JSON output
 * Command exits successfully (exit code `0`)
-* Object files are produced: `cJSON.o`, `cJSON_Utils.o`
