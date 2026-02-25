@@ -14,6 +14,7 @@ from c2rust.utils.fidelity import (
     analyze_rust_files_quality,
     compute_fidelity_report,
     export_fidelity_report,
+    extract_c_defined_functions_by_file,
     extract_c_public_api_functions,
     extract_c_defined_functions,
     extract_rust_functions,
@@ -72,6 +73,7 @@ def run_single_pass(dataset_name: str, datasets_root: Path, output_root: Path) -
     if not expected_c_functions:
         expected_c_functions = extract_c_defined_functions(c_files)
         expected_source = "c_defined_fallback"
+    per_file_expected_functions = extract_c_defined_functions_by_file(c_files)
 
     translated_modules: list[str] = []
     translated_files: list[Path] = []
@@ -94,7 +96,7 @@ def run_single_pass(dataset_name: str, datasets_root: Path, output_root: Path) -
                 c_code=c_code,
                 file_path=relative_path,
                 header_context=header_context,
-                required_functions=expected_c_functions,
+                required_functions=per_file_expected_functions.get(relative_path) or expected_c_functions,
             )
 
             prompt_tokens, completion_tokens = get_token_usage(response)
@@ -115,6 +117,9 @@ def run_single_pass(dataset_name: str, datasets_root: Path, output_root: Path) -
                     "output_chars": len(rust_code),
                     "prompt_tokens": prompt_tokens,
                     "completion_tokens": completion_tokens,
+                    "required_function_count": len(
+                        per_file_expected_functions.get(relative_path) or expected_c_functions
+                    ),
                     **response_diagnostics,
                 }
             )

@@ -59,6 +59,38 @@ def extract_c_defined_functions(c_files: list[tuple[str, Path]]) -> list[str]:
     return sorted(names)
 
 
+def extract_c_defined_functions_for_file(c_file: Path) -> list[str]:
+    """Extract function names defined in one C source file."""
+    definition_re = re.compile(
+        r"^\s*(?:static\s+)?(?:inline\s+)?(?:[A-Za-z_][\w\s\*]*\s+)+"
+        r"(?P<name>[A-Za-z_]\w*)\s*\([^;{}]*\)\s*\{",
+        flags=re.MULTILINE,
+    )
+
+    excluded = {"if", "for", "while", "switch"}
+    try:
+        content = c_file.read_text(encoding="utf-8", errors="ignore")
+    except Exception:
+        return []
+
+    names: set[str] = set()
+    for match in definition_re.finditer(content):
+        name = match.group("name")
+        if name in excluded:
+            continue
+        names.add(name)
+
+    return sorted(names)
+
+
+def extract_c_defined_functions_by_file(c_files: list[tuple[str, Path]]) -> dict[str, list[str]]:
+    """Return mapping from relative C file path to locally defined symbols."""
+    result: dict[str, list[str]] = {}
+    for rel_path, abs_path in c_files:
+        result[rel_path] = extract_c_defined_functions_for_file(abs_path)
+    return result
+
+
 def _strip_c_comments(text: str) -> str:
     """Remove C/C++ comments for simpler prototype parsing."""
     text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
