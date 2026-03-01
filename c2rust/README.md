@@ -41,6 +41,39 @@ Pipeline output is written to:
 - `fidelity_report.json`
 - `translation_diagnostics.json`
 
+## Pilot APR Experiment
+
+Run translation + APR context strategies in one experiment:
+
+```bash
+python -m c2rust.apr_experiment sds-master cjson/cJSON-master kilo-master --max-attempts 5
+```
+
+Experiment outputs are written to:
+
+`experiments/<timestamp>/`
+
+- `config.json`
+- `runs.csv`
+- `summary.csv`
+- `attempts.csv`
+- `artifacts/` (prompt/response/compile logs per attempt)
+
+Notes:
+- `attempts.csv` includes an `attempt=0` baseline row per strategy for line plots.
+- `runs.csv` includes both `raw_translation_error_count` and `apr_start_error_count`.
+- APR prepass is optional via `--apply-prepass`.
+
+APR guardrails prevent destructive target-file collapse by rejecting edits with severe LOC/function drops or placeholder/truncation markers.
+
+## Plot APR Results
+
+```bash
+python -m c2rust.plot_apr_results experiments/<timestamp>
+```
+
+Generated plots are saved under `experiments/<timestamp>/plots/`.
+
 See `c2rust/PROMPT_CONTRACT.md` for exact translation-stage rules.
 
 ## APR Positioning
