@@ -5,3 +5,5 @@ output/
 
 # ignore all pycache
 __pycache__/
+
+experiments/
