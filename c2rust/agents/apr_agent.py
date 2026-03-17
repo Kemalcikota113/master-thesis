@@ -1,4 +1,4 @@
-"""APR agent for compile-error repair of translated Rust files."""
+"""APR agent for compile-error repair and diagnosis of translated Rust files."""
 
 from typing import Any
 
@@ -23,9 +23,25 @@ Rules:
 """
 
 
+DIAGNOSE_INSTRUCTIONS = """You are an expert Rust compiler-error analyst.
+Your role is to reason about *why* code fails to compile and propose a concrete fix plan.
+
+Rules:
+1. Output structured analysis text only — three sections: ROOT CAUSE, TARGET SYMBOLS, FIX PLAN.
+2. Do NOT output any Rust code.
+3. Be specific: name the exact functions, types, macros, or variables that must change.
+4. Keep the fix plan ordered and actionable.
+"""
+
+
 def create_apr_agent(model) -> Agent:
-    """Create APR agent for target-file repair."""
+    """Create APR agent for target-file repair (code output)."""
     return Agent(model=model, instructions=APR_INSTRUCTIONS, markdown=False)
+
+
+def create_diagnose_agent(model) -> Agent:
+    """Create diagnosis agent for root-cause analysis (text output, no code)."""
+    return Agent(model=model, instructions=DIAGNOSE_INSTRUCTIONS, markdown=False)
 
 
 def repair_target_file(agent: Agent, prompt: str) -> tuple[str, Any]:
